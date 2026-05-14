@@ -107,6 +107,7 @@ class RasaStructuredHalf(StructuredHalf):
             method="POST",
         )
 
+        # We execute the blocking urllib call in a thread pool for async compatibility
         try:
             raw_response = await asyncio.get_event_loop().run_in_executor(
                 None,

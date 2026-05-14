@@ -2,29 +2,39 @@
 
 ## Your answer
 
-The voice pipeline has two modes with shared trace-event contract:
-text mode (run_text_mode, shipped complete) reads stdin and the
-manager persona replies via Llama-3.3-70B; voice mode (run_voice_mode,
-implemented here) uses Speechmatics for STT.
+I ran Ex8 in text-only mode (no Speechmatics or Rime credentials). The
+core gradeable contract is shared between `run_text_mode` and
+`run_voice_mode`: both emit `voice.utterance_in` and `voice.utterance_out`
+trace events on every turn with payload `{text, turn, mode}`. The
+`mode` field is `"text"` or `"voice"` so downstream analysis can
+distinguish transports while applying the same grading rules.
 
-The critical design choice is graceful degradation. run_voice_mode
-checks SPEECHMATICS_KEY and the speechmatics-python import before
-doing anything else. If either is missing, it logs a warning and
-falls through to run_text_mode. This means CI can pass the "voice
-loop implemented" check without Speechmatics credentials — the same
-code runs, just under the simpler transport.
+`ManagerPersona` wraps an `OpenAICompatibleClient` pointed at
+`meta-llama/Llama-3.3-70B-Instruct` on Nebius. The system prompt names
+the pub manager Alasdair MacLeod, fixes the booking rules
+(party ≤ 8 AND deposit ≤ £300 → accept; otherwise decline with a
+specific reason), and caps responses at 60 words. Temperature is `0.0`
+so the same conversation reproduces across runs.
 
-Both modes emit voice.utterance_in and voice.utterance_out trace
-events with payload {text, turn, mode}. The mode field tells the
-grader which transport was in use. Same trace shape = identical
-downstream analysis.
+`run_voice_mode` opens by checking `SPEECHMATICS_KEY` and the
+`speechmatics` / `sounddevice` imports. If either is missing it prints
+a warning to stderr and falls through to `run_text_mode` with the same
+session and persona — no exception, no half-built state. This is what
+the public test `test_voice_mode_falls_back_when_no_speechmatics_key`
+verifies. I confirmed it locally: `make ex8-text` runs the text loop;
+invoking voice mode without keys produces the same trace shape, just
+under a simpler transport.
 
-The ManagerPersona class holds a conversation history list and calls
-an LLM for each turn. It's deterministic given identical history +
-model seed, which makes the tests stable even though we talk to a
-real model.
+The only code I changed in this exercise was restoring `_speak_rime`'s
+`httpx.AsyncClient` block, which PR #18 had stubbed out. Without that
+fix, ruff flagged `payload`/`headers` as unused and `mp3_bytes` as
+undefined — five mechanical points lost on dead code in an unreachable
+path. The runtime behaviour is unchanged because no Rime key is set,
+so the `_speak_rime` call site is never reached.
 
 ## Citations
 
-- starter/voice_pipeline/voice_loop.py — run_voice_mode
-- starter/voice_pipeline/manager_persona.py — LLM-backed persona
+- `starter/voice_pipeline/manager_persona.py:22-41` — system prompt
+- `starter/voice_pipeline/voice_loop.py:41-77` — text-mode reference
+- `starter/voice_pipeline/voice_loop.py:90-117` — graceful degradation
+- `tests/public/test_ex8_scaffold.py` — five Ex8 tests, all green

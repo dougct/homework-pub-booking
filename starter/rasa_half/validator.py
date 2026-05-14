@@ -207,8 +207,7 @@ def canonicalise_venue_id(raw: str) -> str:
     """'Haymarket Tap' → 'haymarket_tap'. Leaves 'haymarket_tap' unchanged."""
     s = str(raw).strip().lower()
     s = re.sub(r"[\s\-]+", "_", s)
-    s = re.sub(r"[^a-z0-9_]", "", s)
-    return s
+    return re.sub(r"[^a-z0-9_]", "", s)
 
 
 def parse_party_size(raw: str | int) -> int:
